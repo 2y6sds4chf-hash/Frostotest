@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#5b4337" />
+    <meta name="description" content="Frostgrave campaign shop reference." />
+    <title>Frostgrave Shop Reference</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./assets/icon-192.png" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Campaign reference</p>
+        <h1>Frostgrave Shop</h1>
+        <p class="subhead">Recruitment, scrolls, grimoires, potions, magic weapons, armour, and magic items, with prices and who can buy or use them.</p>
+      </div>
+      <div class="header-actions">
+        <a class="ghost nav-link" href="./index.html">Back to creator</a>
+      </div>
+    </header>
+
+    <main class="layout single-column-layout">
+      <section class="content shop-content">
+        <section class="card section-block">
+          <div class="section-heading">
+            <h2>What the rules allow</h2>
+            <p>The shop follows the campaign buying rules from the Frostgrave Second Edition book: wizards may hire soldiers, buy an apprentice, buy any grimoire for 500gc, buy any scroll for 250gc, and freely buy potions, magic weapons, armour, and magic items at their listed purchase prices.</p>
+          </div>
+          <div id="shopSections" class="shop-sections"></div>
+        </section>
+      </section>
+    </main>
+
+    <script type="module">
+      import { SHOP_DATA } from './data.js';
+
+      const gc = (value) => value == null ? 'Not for sale' : `${value}gc`;
+
+      const table = (entries, columns) => `
+        <div class="table-wrap">
+          <table class="shop-table">
+            <thead>
+              <tr>${columns.map((col) => `<th>${col.label}</th>`).join('')}</tr>
+            </thead>
+            <tbody>
+              ${entries.map((entry) => `
+                <tr>
+                  ${columns.map((col) => `<td>${col.render(entry)}</td>`).join('')}
+                </tr>
+              `).join('')}
+            </tbody>
+          </table>
+        </div>
+      `;
+
+      const sections = [
+        {
+          title: 'Recruitment and spell purchases',
+          intro: SHOP_DATA.recruitment.summary,
+          body: table(SHOP_DATA.recruitment.entries, [
+            { label: 'Name', render: (entry) => `<strong>${entry.name}</strong><div class="table-note">${entry.type}</div>` },
+            { label: 'Price', render: (entry) => gc(entry.price) },
+            { label: 'Who can buy', render: (entry) => entry.whoCanBuy },
+            { label: 'Who can use', render: (entry) => entry.whoCanUse },
+            { label: 'Notes', render: (entry) => entry.notes || '' }
+          ])
+        },
+        {
+          title: 'Lesser potions',
+          intro: SHOP_DATA.potions.summary,
+          body: table(SHOP_DATA.potions.lesser, [
+            { label: 'Potion', render: (entry) => `<strong>${entry.name}</strong>` },
+            { label: 'Purchase', render: (entry) => gc(entry.price) },
+            { label: 'Sale', render: (entry) => gc(entry.salePrice) },
+            { label: 'Who can use', render: (entry) => entry.whoCanUse },
+            { label: 'Rule note', render: (entry) => entry.notes }
+          ])
+        },
+        {
+          title: 'Greater potions',
+          intro: 'Ingredient cost is included because the Brew Potion spell uses it.',
+          body: table(SHOP_DATA.potions.greater, [
+            { label: 'Potion', render: (entry) => `<strong>${entry.name}</strong>` },
+            { label: 'Purchase', render: (entry) => gc(entry.price) },
+            { label: 'Sale', render: (entry) => gc(entry.salePrice) },
+            { label: 'Ingredient', render: (entry) => gc(entry.ingredientCost) },
+            { label: 'Who can use', render: (entry) => entry.whoCanUse },
+            { label: 'Rule note', render: (entry) => entry.notes }
+          ])
+        },
+        {
+          title: 'Magic weapons and armour',
+          intro: SHOP_DATA.magicWeaponsArmour.summary,
+          body: table(SHOP_DATA.magicWeaponsArmour.entries, [
+            { label: 'Item', render: (entry) => `<strong>${entry.name}</strong>` },
+            { label: 'Purchase', render: (entry) => gc(entry.price) },
+            { label: 'Sale', render: (entry) => gc(entry.salePrice) },
+            { label: 'Who can use', render: (entry) => entry.whoCanUse },
+            { label: 'Rule note', render: (entry) => entry.notes }
+          ])
+        },
+        {
+          title: 'Magic items',
+          intro: SHOP_DATA.magicItems.summary,
+          body: table(SHOP_DATA.magicItems.entries, [
+            { label: 'Item', render: (entry) => `<strong>${entry.name}</strong>` },
+            { label: 'Purchase', render: (entry) => gc(entry.price) },
+            { label: 'Sale', render: (entry) => gc(entry.salePrice) },
+            { label: 'Who can use', render: (entry) => entry.whoCanUse },
+            { label: 'Rule note', render: (entry) => entry.notes }
+          ])
+        }
+      ];
+
+      document.getElementById('shopSections').innerHTML = sections.map((section) => `
+        <section class="panel stack shop-section">
+          <div class="section-heading compact-head">
+            <h3>${section.title}</h3>
+            <p>${section.intro}</p>
+          </div>
+          ${section.body}
+        </section>
+      `).join('');
+    </script>
+  </body>
+</html>

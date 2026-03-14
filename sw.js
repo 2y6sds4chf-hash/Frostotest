@@ -1,7 +1,8 @@
-const CACHE = 'frostgrave-pwa-v2';
+const CACHE = 'frostgrave-pwa-v3';
 const ASSETS = [
   './',
   './index.html',
+  './shop.html',
   './styles.css',
   './app.js',
   './data.js',

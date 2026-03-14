@@ -71,7 +71,9 @@ function defaultState() {
     treasury: '400',
     spells: Object.fromEntries(SPELLS.map((spell) => [spell.name, false])),
     spellSearch: '',
-    spellFilter: 'starter',
+    spellFilter: 'all'
+    ,spellPhase: 'own'
+    ,expandedSpells: {},
     soldierSlots: Array.from({ length: 8 }, () => ({ type: '', items: '', notes: '', currentHealth: '' }))
   };
 }
@@ -312,7 +314,7 @@ function renderSchoolCards() {
 function spellFilterMatches(spell) {
   const relation = relationFor(spell.school);
   const search = state.spellSearch.trim().toLowerCase();
-  const searchable = `${spell.name} ${spell.school} ${spell.category} ${spell.tags.join(' ')}`.toLowerCase();
+  const searchable = `${spell.name} ${spell.school} ${spell.category} ${spell.tags.join(' ')} ${spell.description || ''}`.toLowerCase();
   if (search && !searchable.includes(search)) return false;
 
   switch (state.spellFilter) {
@@ -326,33 +328,71 @@ function spellFilterMatches(spell) {
   }
 }
 
+function suggestedSpellPhase() {
+  const stats = starterSpellStats();
+  if (!state.school) return 'own';
+  if (stats.own < 3) return 'own';
+  const alignedDone = SCHOOL_DATA[state.school].aligned.every((school) => (stats.alignedBySchool[school] || 0) >= 1);
+  if (!alignedDone) return 'aligned';
+  if (stats.neutralTotal < 2) return 'neutral';
+  return 'review';
+}
+
+function activeSpellPhase() {
+  if (!state.strictStarterMode) return state.spellPhase || 'review';
+  const valid = ['own', 'aligned', 'neutral', 'review'];
+  const preferred = state.spellPhase || suggestedSpellPhase();
+  return valid.includes(preferred) ? preferred : suggestedSpellPhase();
+}
+
+function phaseLabel(phase) {
+  return ({ own: 'Own school', aligned: 'Aligned schools', neutral: 'Other schools', review: 'Review' })[phase] || phase;
+}
+
+function spellVisibleInPhase(spell, phase) {
+  const relation = relationFor(spell.school);
+  if (phase === 'review') return true;
+  if (phase === 'own') return relation === 'own';
+  if (phase === 'aligned') return relation === 'aligned';
+  if (phase === 'neutral') return relation === 'neutral';
+  return true;
+}
+
+function schoolGroupSort(a, b) {
+  return SCHOOL_ORDER.indexOf(a) - SCHOOL_ORDER.indexOf(b);
+}
+
 function spellCardMarkup(spell) {
   const selected = Boolean(state.spells[spell.name]);
+  const expanded = Boolean(state.expandedSpells?.[spell.name]);
   const relation = relationFor(spell.school);
   const eligibility = canSelectSpell(spell);
   const disabled = !selected && !eligibility.ok;
   return `
-    <article class="spell-card parchment-panel ${selected ? 'selected' : ''} relation-${relation} ${disabled ? 'disabled' : ''}">
-      <div class="spell-card-top">
-        <div>
-          <h3>${spell.name}</h3>
-          <p class="spell-school-line">${spell.school} · ${relationLabel(relation)}</p>
-        </div>
+    <article class="spell-item ${selected ? 'selected' : ''} relation-${relation} ${disabled ? 'disabled' : ''}">
+      <div class="spell-item-head">
+        <button class="spell-expand" data-spell-card="${spell.name}" aria-expanded="${expanded ? 'true' : 'false'}">
+          <span class="spell-main">
+            <span class="spell-title">${spell.name}</span>
+            <span class="spell-school-line">${spell.school} · ${relationLabel(relation)}</span>
+          </span>
+          <span class="spell-mini-meta">Base ${spell.base} · Starter ${adjustedCastingNumber(spell)} · ${spell.category}</span>
+          <span class="spell-caret">${expanded ? '−' : '+'}</span>
+        </button>
         <button class="spell-toggle ${selected ? 'active' : ''}" data-spell-toggle="${spell.name}" ${disabled ? 'disabled' : ''}>
           ${selected ? 'Selected' : 'Add'}
         </button>
       </div>
-      <div class="spell-meta">
-        <span>Base ${spell.base}</span>
-        <span>Starter ${adjustedCastingNumber(spell)}</span>
-        <span>${spell.category}</span>
-      </div>
-      <div class="tag-row">${spell.tags.map((tag) => `<span class="tag-chip">${tag}</span>`).join('')}</div>
-      ${disabled ? `<p class="reason-text">${eligibility.reason}</p>` : ''}
+      ${expanded ? `
+        <div class="spell-item-body parchment-panel">
+          <div class="tag-row">${spell.tags.map((tag) => `<span class="tag-chip">${tag}</span>`).join('')}</div>
+          <p class="spell-description">${escapeHtml(spell.description || 'No description available.')}</p>
+          ${disabled ? `<p class="reason-text">${eligibility.reason}</p>` : ''}
+        </div>
+      ` : disabled ? `<p class="reason-text compact">${eligibility.reason}</p>` : ''}
     </article>
   `;
 }
-
 function relationLabel(relation) {
   return ({ own: 'Own school', aligned: 'Aligned', neutral: 'Neutral', opposed: 'Opposed', unknown: 'Choose a school' })[relation] || relation;
 }
@@ -362,9 +402,9 @@ function renderSpellSummary() {
   const issues = starterSpellIssues();
   const aligned = state.school ? SCHOOL_DATA[state.school].aligned.map((school) => `${school}: ${stats.alignedBySchool[school] || 0}/1`).join(' · ') : 'Choose a school';
   const neutral = state.school ? Object.entries(stats.neutralBySchool).map(([school, count]) => `${school}: ${count}`).join(' · ') || 'None yet' : 'Choose a school';
+  const phase = activeSpellPhase();
 
   document.getElementById('spellSearch').value = state.spellSearch;
-  document.getElementById('spellFilter').value = state.spellFilter;
   document.getElementById('spellSummary').innerHTML = `
     <div class="summary-grid">
       <div><strong>Selected</strong><span>${stats.total}${state.strictStarterMode ? ' / 8' : ''}</span></div>
@@ -372,15 +412,36 @@ function renderSpellSummary() {
       <div><strong>Aligned picks</strong><span>${aligned}</span></div>
       <div><strong>Neutral picks</strong><span>${neutral}</span></div>
     </div>
+    <div class="spell-phase-tabs">
+      ${['own', 'aligned', 'neutral', 'review'].map((item) => `<button class="ghost spell-phase-tab ${phase === item ? 'active' : ''}" data-spell-phase="${item}">${phaseLabel(item)}</button>`).join('')}
+    </div>
+    <div class="alert info"><strong>Current step:</strong> ${phaseLabel(phase)}. In strict starter mode the recommended order is own school, then aligned schools, then two neutral schools.</div>
     ${issues.length ? `<div class="alert warning"><strong>Still needed:</strong><ul>${issues.map((item) => `<li>${item}</li>`).join('')}</ul></div>` : '<div class="alert success">Starter spell selection looks legal.</div>'}
   `;
 }
 
 function renderSpellCards() {
-  const filtered = SPELLS.filter(spellFilterMatches);
-  document.getElementById('spellCards').innerHTML = filtered.map(spellCardMarkup).join('');
+  const phase = activeSpellPhase();
+  const filtered = SPELLS.filter((spell) => spellFilterMatches(spell) && spellVisibleInPhase(spell, phase));
+  const grouped = filtered.reduce((acc, spell) => {
+    (acc[spell.school] ||= []).push(spell);
+    return acc;
+  }, {});
+  const schools = Object.keys(grouped).sort(schoolGroupSort);
+  if (!schools.length) {
+    document.getElementById('spellCards').innerHTML = '<div class="panel">No spells match the current phase and search.</div>';
+    return;
+  }
+  document.getElementById('spellCards').innerHTML = schools.map((school) => `
+    <section class="spell-school-group panel">
+      <div class="spell-school-header">
+        <h3>${school}</h3>
+        <p>${relationLabel(relationFor(school))}</p>
+      </div>
+      <div class="spell-list">${grouped[school].map(spellCardMarkup).join('')}</div>
+    </section>
+  `).join('');
 }
-
 function statField(label, path, value, readOnly = false) {
   return `
     <label class="field-group">
@@ -654,7 +715,6 @@ function renderPreview() {
     </div>
   `).join('');
 }
-
 function renderAll() {
   renderSchoolCards();
   renderSpellSummary();
@@ -768,8 +828,28 @@ function handleDocumentClick(event) {
   const schoolButton = event.target.closest('[data-school]');
   if (schoolButton) {
     state.school = schoolButton.dataset.school;
+    state.spellPhase = suggestedSpellPhase();
     saveState();
     renderAll();
+    return;
+  }
+
+  const phaseButton = event.target.closest('[data-spell-phase]');
+  if (phaseButton) {
+    state.spellPhase = phaseButton.dataset.spellPhase;
+    saveState();
+    renderSpellSummary();
+    renderSpellCards();
+    return;
+  }
+
+  const spellCard = event.target.closest('[data-spell-card]');
+  if (spellCard) {
+    const spellName = spellCard.dataset.spellCard;
+    state.expandedSpells ||= {};
+    state.expandedSpells[spellName] = !state.expandedSpells[spellName];
+    saveState();
+    renderSpellCards();
     return;
   }
 
@@ -787,6 +867,7 @@ function handleDocumentClick(event) {
         return;
       }
       state.spells[spellName] = true;
+      if (state.strictStarterMode) state.spellPhase = suggestedSpellPhase();
     }
     saveState();
     renderSpellSummary();
@@ -795,7 +876,6 @@ function handleDocumentClick(event) {
     renderPreview();
   }
 }
-
 function setupButtons() {
   document.getElementById('printBtn').addEventListener('click', () => window.print());
   document.getElementById('downloadDataBtn').addEventListener('click', exportData);

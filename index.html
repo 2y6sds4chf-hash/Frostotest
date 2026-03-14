@@ -19,6 +19,7 @@
         <p class="subhead">Build a starting wizard step by step, browse spells as parchment cards, and print the finished wizard sheet.</p>
       </div>
       <div class="header-actions">
+        <a class="ghost nav-link" href="./shop.html">Shop reference</a>
         <button id="installBtn" class="ghost" hidden>Install</button>
         <button id="printBtn">Print / Save PDF</button>
       </div>
@@ -32,6 +33,7 @@
           <a href="#detailsStep">3. Wizard details</a>
           <a href="#warbandStep">4. Warband</a>
           <a href="#previewSection">5. Sheet preview</a>
+          <a href="./shop.html">Shop reference</a>
         </nav>
 
         <section id="liveSummary" class="summary-stack"></section>
@@ -95,25 +97,13 @@
         <section id="spellsStep" class="card section-block">
           <div class="section-heading">
             <h2>2. Spellbook</h2>
-            <p>The cards show school relationship, base casting number, adjusted starter casting number, and quick tags.</p>
+            <p>Pick spells in order: own school first, then aligned schools, then your two other schools. Tap a spell row to open its full rule text.</p>
           </div>
           <div id="spellSummary" class="panel stack"></div>
-          <div class="toolbar">
+          <div class="toolbar compact-toolbar">
             <div class="field-group search-field">
               <label for="spellSearch">Search spells</label>
-              <input id="spellSearch" type="search" placeholder="Search by name, school, or tag" />
-            </div>
-            <div class="field-group narrow-field">
-              <label for="spellFilter">Filter</label>
-              <select id="spellFilter">
-                <option value="starter">Starter-legal schools</option>
-                <option value="all">All spells</option>
-                <option value="selected">Selected</option>
-                <option value="own">Own school</option>
-                <option value="aligned">Aligned schools</option>
-                <option value="neutral">Neutral schools</option>
-                <option value="opposed">Opposed school</option>
-              </select>
+              <input id="spellSearch" type="search" placeholder="Search by name, school, tag, or rule text" />
             </div>
           </div>
           <div id="spellCards" class="spell-card-grid"></div>
