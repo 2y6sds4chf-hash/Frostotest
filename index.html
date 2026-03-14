@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#5b4337" />
+    <meta name="description" content="Offline-capable Frostgrave character creator and wizard sheet PWA." />
+    <title>Frostgrave Character Creator</title>
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" href="./assets/icon-192.png" />
+    <link rel="apple-touch-icon" href="./assets/icon-192.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">Guided PWA</p>
+        <h1>Frostgrave Character Creator</h1>
+        <p class="subhead">Build a starting wizard step by step, browse spells as parchment cards, and print the finished wizard sheet.</p>
+      </div>
+      <div class="header-actions">
+        <button id="installBtn" class="ghost" hidden>Install</button>
+        <button id="printBtn">Print / Save PDF</button>
+      </div>
+    </header>
+
+    <main class="layout">
+      <aside class="sidebar card">
+        <nav class="toc">
+          <a href="#identityStep">1. Identity & school</a>
+          <a href="#spellsStep">2. Spellbook</a>
+          <a href="#detailsStep">3. Wizard details</a>
+          <a href="#warbandStep">4. Warband</a>
+          <a href="#previewSection">5. Sheet preview</a>
+        </nav>
+
+        <section id="liveSummary" class="summary-stack"></section>
+
+        <div class="sidebar-actions">
+          <button id="downloadDataBtn" class="ghost">Export data</button>
+          <label class="file-btn ghost">
+            Import data
+            <input id="importDataInput" type="file" accept="application/json" hidden />
+          </label>
+          <button id="resetBtn" class="danger">Clear all data</button>
+        </div>
+
+        <p class="small-note">Rules data in the helper flow is summarized from your uploaded Frostgrave Second Edition PDF.</p>
+        <p class="small-note"><a href="./assets/template.pdf" target="_blank" rel="noreferrer">Open blank wizard sheet PDF</a></p>
+      </aside>
+
+      <section class="content">
+        <section class="card hero-card">
+          <div class="hero-grid">
+            <div>
+              <p class="eyebrow">Creation order</p>
+              <h2>Start with the school, then let the app keep the rules straight.</h2>
+              <p class="hero-copy">Starter mode enforces the opening campaign build: 3 spells from your own school, 1 from each aligned school, 2 from different neutral schools, none from the opposed school, 400gc total, and no more than 4 specialist soldiers.</p>
+            </div>
+            <div class="hero-note parchment-panel">
+              <h3>Starter checklist</h3>
+              <ul class="compact-list">
+                <li>Choose a wizard name and school.</li>
+                <li>Pick 8 starting spells using school relations.</li>
+                <li>Wizard starts at M6 F+2 S+0 A10 W+4 H14.</li>
+                <li>Apprentice costs 100gc and mirrors the wizard with lower F/W/H.</li>
+                <li>You begin with 400gc and up to 8 soldiers, max 4 specialists.</li>
+              </ul>
+            </div>
+          </div>
+        </section>
+
+        <section id="identityStep" class="card section-block">
+          <div class="section-heading">
+            <h2>1. Identity and school</h2>
+            <p>Pick the school first. The spell browser and casting numbers update from that choice.</p>
+          </div>
+          <div class="form-grid-3 responsive-grid">
+            <div class="field-group">
+              <label for="wizardName">Wizard name</label>
+              <input id="wizardName" data-path="wizardName" type="text" placeholder="A suitably dramatic name" />
+            </div>
+            <div class="field-group">
+              <label for="treasury">Treasury (gc)</label>
+              <input id="treasury" data-path="treasury" type="text" inputmode="numeric" placeholder="400" />
+            </div>
+            <label class="toggle-row">
+              <input id="strictStarterMode" type="checkbox" />
+              <span>Use strict starter mode</span>
+            </label>
+          </div>
+          <div id="schoolCards" class="school-grid"></div>
+        </section>
+
+        <section id="spellsStep" class="card section-block">
+          <div class="section-heading">
+            <h2>2. Spellbook</h2>
+            <p>The cards show school relationship, base casting number, adjusted starter casting number, and quick tags.</p>
+          </div>
+          <div id="spellSummary" class="panel stack"></div>
+          <div class="toolbar">
+            <div class="field-group search-field">
+              <label for="spellSearch">Search spells</label>
+              <input id="spellSearch" type="search" placeholder="Search by name, school, or tag" />
+            </div>
+            <div class="field-group narrow-field">
+              <label for="spellFilter">Filter</label>
+              <select id="spellFilter">
+                <option value="starter">Starter-legal schools</option>
+                <option value="all">All spells</option>
+                <option value="selected">Selected</option>
+                <option value="own">Own school</option>
+                <option value="aligned">Aligned schools</option>
+                <option value="neutral">Neutral schools</option>
+                <option value="opposed">Opposed school</option>
+              </select>
+            </div>
+          </div>
+          <div id="spellCards" class="spell-card-grid"></div>
+        </section>
+
+        <section id="detailsStep" class="card section-block">
+          <div class="section-heading">
+            <h2>3. Wizard, apprentice, and base details</h2>
+            <p>Wizard stats start at the book defaults. Apprentice stats are derived automatically from the wizard.</p>
+          </div>
+          <div id="detailsContent"></div>
+        </section>
+
+        <section id="warbandStep" class="card section-block">
+          <div class="section-heading">
+            <h2>4. Warband builder</h2>
+            <p>Choose up to eight soldier slots. The app totals gold, counts specialists, and fills the sheet preview for you.</p>
+          </div>
+          <div id="warbandSummary" class="panel stack"></div>
+          <div id="warbandBuilder"></div>
+        </section>
+
+        <section id="previewSection" class="card section-block preview-shell">
+          <div class="section-heading">
+            <h2>5. Sheet preview</h2>
+            <p>This is the printable version. Use your browser’s Save as PDF option to keep a completed sheet.</p>
+          </div>
+          <div id="previewPages" class="preview-pages"></div>
+        </section>
+      </section>
+    </main>
+
+    <script src="./app.js" type="module"></script>
+  </body>
+</html>

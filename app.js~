@@ -1,0 +1,842 @@
+import { SCHOOL_ORDER, SCHOOL_DATA, SPELLS, SOLDIERS, STARTING_STATS } from './data.js';
+
+const PAGE_WIDTH = 538.5733;
+const PAGE_HEIGHT = 685.9743;
+const STORAGE_KEY = 'frostgrave-character-creator-v2';
+const PAGE_IMAGES = ['./assets/page-1.png', './assets/page-2.png', './assets/page-3.png'];
+const SOLDIER_MAP = Object.fromEntries(SOLDIERS.map((entry) => [entry.name, entry]));
+
+const SPELL_LINE_POSITIONS = [
+  ['Crumble', 61, 74], ['Call Storm', 286, 74],
+  ['Decay', 61, 86], ['Destructive Sphere', 286, 86],
+  ['Fast Act', 61, 101], ['Elemental Ball', 286, 101],
+  ['Fleet Feet', 61, 116], ['Elemental Bolt', 286, 116],
+  ['Petrify', 61, 128], ['Elemental Hammer', 286, 128],
+  ['Slow', 61, 143], ['Elemental Shield', 286, 143],
+  ['Time Store', 61, 158], ['Scatter Shot', 286, 158],
+  ['Time Walk', 61, 173], ['Wall', 286, 173],
+  ['Animate Construct', 61, 203], ['Blink', 286, 203],
+  ['Control Construct', 61, 215], ['Beauty', 286, 215],
+  ['Embed Enchantment', 61, 230], ['Fool\'s Gold', 286, 230],
+  ['Enchant Armour', 61, 245], ['Glow', 286, 245],
+  ['Enchant Weapon', 61, 257], ['Illusionary Soldier', 286, 257],
+  ['Grenade', 61, 272], ['Invisibility', 286, 272],
+  ['Strength', 61, 287], ['Teleport', 286, 287],
+  ['Telekinesis', 61, 302], ['Transpose', 286, 302],
+  ['Animate Skull', 61, 332], ['Absorb Knowledge', 286, 332],
+  ['Bone Dart', 61, 344], ['Bridge', 286, 344],
+  ['Bones of the Earth', 61, 359], ['Draining Word', 286, 359],
+  ['Control Undead', 61, 374], ['Explosive Rune', 286, 374],
+  ['Raise Zombie', 61, 386], ['Furious Quill', 286, 386],
+  ['Spell Eater', 61, 401], ['Power Word', 286, 401],
+  ['Steal Health', 61, 416], ['Push', 286, 416],
+  ['Strike Dead', 61, 431], ['Write Scroll', 286, 431],
+  ['Awareness', 61, 461], ['Control Demon', 286, 461],
+  ['Combat Awareness', 61, 473], ['Imp', 286, 473],
+  ['Mind Control', 61, 488], ['Leap', 286, 488],
+  ['Mind Lock', 61, 503], ['Plague of Insects', 286, 503],
+  ['Reveal Secret', 61, 515], ['Planar Tear', 286, 515],
+  ['Suggestion', 61, 530], ['Plane Walk', 286, 530],
+  ['True Sight', 61, 545], ['Possess', 286, 545],
+  ['Wizard Eye', 61, 560], ['Summon Demon', 286, 560],
+  ['Banish', 61, 590], ['Animal Companion', 286, 590],
+  ['Blinding Light', 61, 602], ['Brew Potion', 286, 602],
+  ['Circle of Protection', 61, 617], ['Control Animal', 286, 617],
+  ['Destroy Undead', 61, 632], ['Curse', 286, 632],
+  ['Dispel', 61, 647], ['Familiar', 286, 647],
+  ['Heal', 61, 659], ['Fog', 286, 659],
+  ['Miraculous Cure', 61, 674], ['Mud', 286, 674],
+  ['Shield', 61, 689], ['Poison Dart', 286, 689]
+];
+
+function clone(value) {
+  return JSON.parse(JSON.stringify(value));
+}
+
+function defaultState() {
+  return {
+    wizardName: '',
+    school: '',
+    strictStarterMode: true,
+    wizard: clone(STARTING_STATS.wizard),
+    wizardItems: '',
+    wizardNotes: '',
+    hasApprentice: true,
+    apprenticeName: '',
+    apprenticeCurrentHealth: STARTING_STATS.apprentice.currentHealth,
+    apprenticeItems: '',
+    apprenticeNotes: '',
+    homeBase: '',
+    vault: '',
+    treasury: '400',
+    spells: Object.fromEntries(SPELLS.map((spell) => [spell.name, false])),
+    spellSearch: '',
+    spellFilter: 'starter',
+    soldierSlots: Array.from({ length: 8 }, () => ({ type: '', items: '', notes: '', currentHealth: '' }))
+  };
+}
+
+function mergeState(base, incoming) {
+  if (Array.isArray(base) && Array.isArray(incoming)) {
+    return base.map((entry, index) => mergeState(entry, incoming[index]));
+  }
+  if (base && typeof base === 'object' && incoming && typeof incoming === 'object' && !Array.isArray(base)) {
+    const next = clone(base);
+    for (const [key, value] of Object.entries(incoming)) {
+      if (key in next) next[key] = mergeState(next[key], value);
+    }
+    return next;
+  }
+  return incoming === undefined ? base : incoming;
+}
+
+function loadState() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? mergeState(defaultState(), JSON.parse(raw)) : defaultState();
+  } catch (error) {
+    console.warn('Could not load saved state', error);
+    return defaultState();
+  }
+}
+
+let state = loadState();
+
+function saveState() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+
+function getValue(path) {
+  return path.split('.').reduce((acc, key) => (acc == null ? undefined : acc[key]), state);
+}
+
+function setValue(path, value) {
+  const keys = path.split('.');
+  let cursor = state;
+  for (let i = 0; i < keys.length - 1; i += 1) {
+    const key = /^\d+$/.test(keys[i]) ? Number(keys[i]) : keys[i];
+    cursor = cursor[key];
+  }
+  const last = /^\d+$/.test(keys[keys.length - 1]) ? Number(keys[keys.length - 1]) : keys[keys.length - 1];
+  cursor[last] = value;
+  saveState();
+}
+
+function relationFor(spellSchool, wizardSchool = state.school) {
+  if (!wizardSchool || !SCHOOL_DATA[wizardSchool]) return 'unknown';
+  if (spellSchool === wizardSchool) return 'own';
+  if (SCHOOL_DATA[wizardSchool].aligned.includes(spellSchool)) return 'aligned';
+  if (SCHOOL_DATA[wizardSchool].opposed === spellSchool) return 'opposed';
+  return 'neutral';
+}
+
+function penaltyForRelation(relation) {
+  return ({ own: 0, aligned: 2, neutral: 4, opposed: 6, unknown: 0 })[relation] ?? 0;
+}
+
+function adjustedCastingNumber(spell) {
+  return spell.base + penaltyForRelation(relationFor(spell.school));
+}
+
+function selectedSpellNames() {
+  return SPELLS.filter((spell) => state.spells[spell.name]).map((spell) => spell.name);
+}
+
+function starterSpellStats() {
+  const alignedBySchool = {};
+  const neutralBySchool = {};
+  let own = 0;
+  let opposed = 0;
+  let total = 0;
+  let alignedTotal = 0;
+  let neutralTotal = 0;
+
+  SPELLS.forEach((spell) => {
+    if (!state.spells[spell.name]) return;
+    total += 1;
+    const relation = relationFor(spell.school);
+    if (relation === 'own') own += 1;
+    if (relation === 'aligned') {
+      alignedTotal += 1;
+      alignedBySchool[spell.school] = (alignedBySchool[spell.school] || 0) + 1;
+    }
+    if (relation === 'neutral') {
+      neutralTotal += 1;
+      neutralBySchool[spell.school] = (neutralBySchool[spell.school] || 0) + 1;
+    }
+    if (relation === 'opposed') opposed += 1;
+  });
+
+  return { own, total, opposed, alignedTotal, neutralTotal, alignedBySchool, neutralBySchool };
+}
+
+function starterSpellIssues() {
+  if (!state.strictStarterMode) return [];
+  if (!state.school) return ['Choose a school first so the spell rules can be enforced.'];
+
+  const stats = starterSpellStats();
+  const issues = [];
+
+  if (stats.total !== 8) issues.push(`Choose exactly 8 starting spells. Current total: ${stats.total}.`);
+  if (stats.own !== 3) issues.push(`Choose 3 spells from your own school. Current total: ${stats.own}.`);
+
+  for (const aligned of SCHOOL_DATA[state.school].aligned) {
+    const count = stats.alignedBySchool[aligned] || 0;
+    if (count !== 1) issues.push(`Choose 1 spell from aligned school ${aligned}. Current total: ${count}.`);
+  }
+
+  const neutralSchoolsChosen = Object.values(stats.neutralBySchool).filter(Boolean).length;
+  if (stats.neutralTotal !== 2 || neutralSchoolsChosen !== 2) {
+    issues.push(`Choose 2 neutral spells from 2 different neutral schools. Current total: ${stats.neutralTotal}.`);
+  }
+
+  if (stats.opposed > 0) issues.push('Do not choose spells from the opposed school in starter mode.');
+
+  return issues;
+}
+
+function canSelectSpell(spell) {
+  if (!state.strictStarterMode) return { ok: true, reason: '' };
+  if (!state.school) return { ok: false, reason: 'Pick a wizard school first.' };
+  const relation = relationFor(spell.school);
+  const stats = starterSpellStats();
+
+  if (stats.total >= 8) return { ok: false, reason: 'Starter spellbook already has 8 spells.' };
+  if (relation === 'opposed') return { ok: false, reason: 'Opposed school spells cannot be chosen at creation.' };
+  if (relation === 'own' && stats.own >= 3) return { ok: false, reason: 'You already have 3 spells from your own school.' };
+  if (relation === 'aligned' && (stats.alignedBySchool[spell.school] || 0) >= 1) {
+    return { ok: false, reason: `You already chose a spell from ${spell.school}.` };
+  }
+  if (relation === 'neutral' && stats.neutralTotal >= 2) return { ok: false, reason: 'Starter builds only take 2 neutral spells.' };
+  if (relation === 'neutral' && (stats.neutralBySchool[spell.school] || 0) >= 1) {
+    return { ok: false, reason: 'Neutral starter spells must come from different schools.' };
+  }
+  return { ok: true, reason: '' };
+}
+
+function apprenticeStats() {
+  const wizardFight = parseSignedInt(state.wizard.fight, 2);
+  const wizardShoot = parseSignedInt(state.wizard.shoot, 0);
+  const wizardWill = parseSignedInt(state.wizard.will, 4);
+  const wizardHealth = parseIntSafe(state.wizard.health, 14);
+  return {
+    move: String(parseIntSafe(state.wizard.move, 6)),
+    fight: formatSigned(wizardFight - 2),
+    shoot: formatSigned(wizardShoot),
+    armour: '10',
+    will: formatSigned(wizardWill - 2),
+    health: String(wizardHealth - 2),
+    currentHealth: state.apprenticeCurrentHealth || String(wizardHealth - 2)
+  };
+}
+
+function parseIntSafe(value, fallback = 0) {
+  const parsed = Number.parseInt(String(value).replace(/[^0-9-]/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseSignedInt(value, fallback = 0) {
+  const parsed = Number.parseInt(String(value).replace(/[^0-9+-]/g, ''), 10);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatSigned(value) {
+  return `${value >= 0 ? '+' : ''}${value}`;
+}
+
+function rosterSlots() {
+  return state.soldierSlots.map((slot) => {
+    const template = SOLDIER_MAP[slot.type] || null;
+    return {
+      ...slot,
+      cost: template?.cost ?? 0,
+      specialist: template?.specialist ?? false,
+      move: template?.move ?? '',
+      fight: template?.fight ?? '',
+      shoot: template?.shoot ?? '',
+      armour: template?.armour ?? '',
+      will: template?.will ?? '',
+      health: template?.health ?? '',
+      currentHealth: slot.currentHealth || template?.health || '',
+      notesFull: [template?.notes || '', slot.notes || ''].filter(Boolean).join('\n')
+    };
+  });
+}
+
+function warbandSummary() {
+  const roster = rosterSlots().filter((slot) => slot.type);
+  const apprenticeCost = state.hasApprentice ? 100 : 0;
+  const soldierCost = roster.reduce((sum, slot) => sum + slot.cost, 0);
+  const specialistCount = roster.filter((slot) => slot.specialist).length;
+  const totalCost = apprenticeCost + soldierCost;
+  return {
+    soldierCount: roster.length,
+    specialistCount,
+    apprenticeCost,
+    soldierCost,
+    totalCost,
+    goldRemaining: parseIntSafe(state.treasury || '400', 400) - totalCost,
+    issues: [
+      roster.length > 8 ? 'You can only take up to 8 soldiers.' : '',
+      specialistCount > 4 ? 'Starter warbands can include at most 4 specialists.' : '',
+      totalCost > parseIntSafe(state.treasury || '400', 400) ? 'Your warband currently costs more gold than you have available.' : ''
+    ].filter(Boolean)
+  };
+}
+
+function schoolCardMarkup(school) {
+  const info = SCHOOL_DATA[school];
+  const selected = state.school === school;
+  const neutral = SCHOOL_ORDER.filter((item) => item !== school && !info.aligned.includes(item) && info.opposed !== item);
+  return `
+    <button class="school-card ${selected ? 'selected' : ''} palette-${info.palette}" data-school="${school}">
+      <div class="school-card-top">
+        <span class="school-name">${school}</span>
+        <span class="school-status">${selected ? 'Selected' : 'Choose'}</span>
+      </div>
+      <p>${info.summary}</p>
+      <div class="mini-rule"><strong>Aligned:</strong> ${info.aligned.join(', ')}</div>
+      <div class="mini-rule"><strong>Neutral:</strong> ${neutral.join(', ')}</div>
+      <div class="mini-rule"><strong>Opposed:</strong> ${info.opposed}</div>
+    </button>
+  `;
+}
+
+function renderSchoolCards() {
+  document.getElementById('wizardName').value = state.wizardName;
+  document.getElementById('treasury').value = state.treasury;
+  document.getElementById('strictStarterMode').checked = state.strictStarterMode;
+  document.getElementById('schoolCards').innerHTML = SCHOOL_ORDER.map(schoolCardMarkup).join('');
+}
+
+function spellFilterMatches(spell) {
+  const relation = relationFor(spell.school);
+  const search = state.spellSearch.trim().toLowerCase();
+  const searchable = `${spell.name} ${spell.school} ${spell.category} ${spell.tags.join(' ')}`.toLowerCase();
+  if (search && !searchable.includes(search)) return false;
+
+  switch (state.spellFilter) {
+    case 'selected': return Boolean(state.spells[spell.name]);
+    case 'own': return relation === 'own';
+    case 'aligned': return relation === 'aligned';
+    case 'neutral': return relation === 'neutral';
+    case 'opposed': return relation === 'opposed';
+    case 'starter': return relation !== 'opposed';
+    default: return true;
+  }
+}
+
+function spellCardMarkup(spell) {
+  const selected = Boolean(state.spells[spell.name]);
+  const relation = relationFor(spell.school);
+  const eligibility = canSelectSpell(spell);
+  const disabled = !selected && !eligibility.ok;
+  return `
+    <article class="spell-card parchment-panel ${selected ? 'selected' : ''} relation-${relation} ${disabled ? 'disabled' : ''}">
+      <div class="spell-card-top">
+        <div>
+          <h3>${spell.name}</h3>
+          <p class="spell-school-line">${spell.school} · ${relationLabel(relation)}</p>
+        </div>
+        <button class="spell-toggle ${selected ? 'active' : ''}" data-spell-toggle="${spell.name}" ${disabled ? 'disabled' : ''}>
+          ${selected ? 'Selected' : 'Add'}
+        </button>
+      </div>
+      <div class="spell-meta">
+        <span>Base ${spell.base}</span>
+        <span>Starter ${adjustedCastingNumber(spell)}</span>
+        <span>${spell.category}</span>
+      </div>
+      <div class="tag-row">${spell.tags.map((tag) => `<span class="tag-chip">${tag}</span>`).join('')}</div>
+      ${disabled ? `<p class="reason-text">${eligibility.reason}</p>` : ''}
+    </article>
+  `;
+}
+
+function relationLabel(relation) {
+  return ({ own: 'Own school', aligned: 'Aligned', neutral: 'Neutral', opposed: 'Opposed', unknown: 'Choose a school' })[relation] || relation;
+}
+
+function renderSpellSummary() {
+  const stats = starterSpellStats();
+  const issues = starterSpellIssues();
+  const aligned = state.school ? SCHOOL_DATA[state.school].aligned.map((school) => `${school}: ${stats.alignedBySchool[school] || 0}/1`).join(' · ') : 'Choose a school';
+  const neutral = state.school ? Object.entries(stats.neutralBySchool).map(([school, count]) => `${school}: ${count}`).join(' · ') || 'None yet' : 'Choose a school';
+
+  document.getElementById('spellSearch').value = state.spellSearch;
+  document.getElementById('spellFilter').value = state.spellFilter;
+  document.getElementById('spellSummary').innerHTML = `
+    <div class="summary-grid">
+      <div><strong>Selected</strong><span>${stats.total}${state.strictStarterMode ? ' / 8' : ''}</span></div>
+      <div><strong>Own school</strong><span>${stats.own}${state.strictStarterMode ? ' / 3' : ''}</span></div>
+      <div><strong>Aligned picks</strong><span>${aligned}</span></div>
+      <div><strong>Neutral picks</strong><span>${neutral}</span></div>
+    </div>
+    ${issues.length ? `<div class="alert warning"><strong>Still needed:</strong><ul>${issues.map((item) => `<li>${item}</li>`).join('')}</ul></div>` : '<div class="alert success">Starter spell selection looks legal.</div>'}
+  `;
+}
+
+function renderSpellCards() {
+  const filtered = SPELLS.filter(spellFilterMatches);
+  document.getElementById('spellCards').innerHTML = filtered.map(spellCardMarkup).join('');
+}
+
+function statField(label, path, value, readOnly = false) {
+  return `
+    <label class="field-group">
+      <span>${label}</span>
+      <input data-path="${path}" type="text" value="${escapeHtml(value)}" ${readOnly ? 'readonly' : ''} />
+    </label>
+  `;
+}
+
+function textAreaField(label, path, value, rows = 4, placeholder = '') {
+  return `
+    <label class="field-group">
+      <span>${label}</span>
+      <textarea data-path="${path}" rows="${rows}" placeholder="${escapeHtml(placeholder)}">${escapeHtml(value)}</textarea>
+    </label>
+  `;
+}
+
+function renderDetails() {
+  const apprentice = apprenticeStats();
+  document.getElementById('detailsContent').innerHTML = `
+    <div class="details-grid">
+      <section class="panel stack">
+        <div class="section-heading compact-head">
+          <h3>Wizard</h3>
+          <p>Starting wizard stat-line: M6 F+2 S+0 A10 W+4 H14.</p>
+        </div>
+        <div class="stat-grid-4">
+          ${statField('Move', 'wizard.move', state.wizard.move)}
+          ${statField('Fight', 'wizard.fight', state.wizard.fight)}
+          ${statField('Shoot', 'wizard.shoot', state.wizard.shoot)}
+          ${statField('Armour', 'wizard.armour', state.wizard.armour)}
+          ${statField('Will', 'wizard.will', state.wizard.will)}
+          ${statField('Health', 'wizard.health', state.wizard.health)}
+          ${statField('Level', 'wizard.level', state.wizard.level)}
+          ${statField('Experience', 'wizard.experience', state.wizard.experience)}
+          ${statField('Current Health', 'wizard.currentHealth', state.wizard.currentHealth)}
+        </div>
+        <div class="form-grid-2 responsive-grid">
+          ${textAreaField('Wizard items (5 slots, no armour or shield)', 'wizardItems', state.wizardItems, 5, 'Dagger is free; one item per line works well')}
+          ${textAreaField('Wizard notes', 'wizardNotes', state.wizardNotes, 5)}
+        </div>
+      </section>
+
+      <section class="panel stack">
+        <div class="section-heading compact-head">
+          <h3>Apprentice</h3>
+          <p>Costs 100gc. Shares the wizard’s spells and casts them at -2.</p>
+        </div>
+        <label class="toggle-row inline-toggle">
+          <input id="hasApprentice" type="checkbox" ${state.hasApprentice ? 'checked' : ''} />
+          <span>Hire an apprentice</span>
+        </label>
+        <div class="form-grid-2 responsive-grid apprentice-grid ${state.hasApprentice ? '' : 'muted-panel'}">
+          <label class="field-group">
+            <span>Apprentice name</span>
+            <input data-path="apprenticeName" type="text" value="${escapeHtml(state.apprenticeName)}" ${state.hasApprentice ? '' : 'disabled'} />
+          </label>
+          <label class="field-group">
+            <span>Current Health</span>
+            <input data-path="apprenticeCurrentHealth" type="text" value="${escapeHtml(state.apprenticeCurrentHealth)}" ${state.hasApprentice ? '' : 'disabled'} />
+          </label>
+        </div>
+        <div class="stat-grid-4 apprentice-grid ${state.hasApprentice ? '' : 'muted-panel'}">
+          ${readonlyStat('Move', apprentice.move)}
+          ${readonlyStat('Fight', apprentice.fight)}
+          ${readonlyStat('Shoot', apprentice.shoot)}
+          ${readonlyStat('Armour', apprentice.armour)}
+          ${readonlyStat('Will', apprentice.will)}
+          ${readonlyStat('Health', apprentice.health)}
+        </div>
+        <div class="form-grid-2 responsive-grid apprentice-grid ${state.hasApprentice ? '' : 'muted-panel'}">
+          ${textAreaField('Apprentice items (4 slots, no armour or shield)', 'apprenticeItems', state.apprenticeItems, 4, 'One item per line')}
+          ${textAreaField('Apprentice notes', 'apprenticeNotes', state.apprenticeNotes, 4)}
+        </div>
+      </section>
+    </div>
+
+    <section class="panel stack">
+      <div class="section-heading compact-head">
+        <h3>Base details</h3>
+        <p>These fields map straight onto page 1 of the wizard sheet.</p>
+      </div>
+      <div class="form-grid-3 responsive-grid">
+        ${textAreaField('Home base', 'homeBase', state.homeBase, 4)}
+        ${textAreaField('The Vault', 'vault', state.vault, 4)}
+        <label class="field-group">
+          <span>Treasury label</span>
+          <input data-path="treasury" type="text" value="${escapeHtml(state.treasury)}" />
+        </label>
+      </div>
+    </section>
+  `;
+}
+
+function readonlyStat(label, value) {
+  return `<label class="field-group readonly"><span>${label}</span><input type="text" value="${escapeHtml(value)}" readonly /></label>`;
+}
+
+function renderWarband() {
+  const summary = warbandSummary();
+  document.getElementById('warbandSummary').innerHTML = `
+    <div class="summary-grid">
+      <div><strong>Soldiers</strong><span>${summary.soldierCount} / 8</span></div>
+      <div><strong>Specialists</strong><span>${summary.specialistCount} / 4</span></div>
+      <div><strong>Total spent</strong><span>${summary.totalCost}gc</span></div>
+      <div><strong>Gold left</strong><span>${summary.goldRemaining}gc</span></div>
+    </div>
+    ${summary.issues.length ? `<div class="alert warning"><ul>${summary.issues.map((item) => `<li>${item}</li>`).join('')}</ul></div>` : '<div class="alert success">Warband costs and specialist limits look good.</div>'}
+  `;
+
+  const options = ['<option value="">Choose a soldier type</option>']
+    .concat(SOLDIERS.map((soldier) => `<option value="${soldier.name}">${soldier.name} · ${soldier.cost}gc${soldier.specialist ? ' · specialist' : ''}</option>`))
+    .join('');
+
+  document.getElementById('warbandBuilder').innerHTML = `
+    <div class="soldier-grid">
+      ${rosterSlots().map((slot, index) => `
+        <section class="soldier-card panel ${slot.type ? '' : 'empty-slot'}">
+          <div class="soldier-card-top">
+            <h3>Slot ${index + 1}</h3>
+            ${slot.type ? `<div class="slot-badges"><span class="badge">${slot.cost}gc</span>${slot.specialist ? '<span class="badge accent">Specialist</span>' : '<span class="badge">Standard</span>'}</div>` : ''}
+          </div>
+          <label class="field-group">
+            <span>Type</span>
+            <select data-soldier-index="${index}">
+              ${options.replace(`value="${slot.type}"`, `value="${slot.type}" selected`)}
+            </select>
+          </label>
+          ${slot.type ? `
+            <div class="stat-strip">
+              <span>M ${slot.move}</span><span>F ${slot.fight}</span><span>S ${slot.shoot}</span><span>A ${slot.armour}</span><span>W ${slot.will}</span><span>H ${slot.health}</span>
+            </div>
+            <p class="soldier-notes"><strong>Standard gear:</strong> ${escapeHtml(SOLDIER_MAP[slot.type].notes)}</p>
+            <div class="form-grid-2 responsive-grid">
+              <label class="field-group">
+                <span>Current Health</span>
+                <input data-path="soldierSlots.${index}.currentHealth" type="text" value="${escapeHtml(slot.currentHealth)}" placeholder="${escapeHtml(slot.health)}" />
+              </label>
+              <label class="field-group">
+                <span>Extra item slot</span>
+                <input data-path="soldierSlots.${index}.items" type="text" value="${escapeHtml(slot.items)}" placeholder="Magic item or potion" />
+              </label>
+            </div>
+            ${textAreaField('Extra notes', `soldierSlots.${index}.notes`, state.soldierSlots[index].notes, 3)}
+          ` : '<p class="soldier-placeholder">Pick a soldier type to fill this slot.</p>'}
+        </section>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderSummary() {
+  const spellIssues = starterSpellIssues();
+  const warband = warbandSummary();
+  const schoolInfo = state.school ? SCHOOL_DATA[state.school] : null;
+  const checklist = [
+    { label: 'School chosen', done: Boolean(state.school) },
+    { label: 'Starter spells legal', done: state.strictStarterMode ? spellIssues.length === 0 : selectedSpellNames().length > 0 },
+    { label: 'Warband within limits', done: warband.issues.length === 0 },
+    { label: 'Ready to print', done: Boolean(state.wizardName) && (state.strictStarterMode ? spellIssues.length === 0 : selectedSpellNames().length > 0) }
+  ];
+
+  document.getElementById('liveSummary').innerHTML = `
+    <section class="panel stack">
+      <div class="section-heading compact-head">
+        <h3>Live summary</h3>
+        <p>${state.wizardName || 'Unnamed wizard'}${state.school ? ` · ${state.school}` : ''}</p>
+      </div>
+      <div class="summary-grid compact-summary">
+        <div><strong>Spells</strong><span>${selectedSpellNames().length}</span></div>
+        <div><strong>Gold left</strong><span>${warband.goldRemaining}gc</span></div>
+        <div><strong>Soldiers</strong><span>${warband.soldierCount}</span></div>
+        <div><strong>Specialists</strong><span>${warband.specialistCount}</span></div>
+      </div>
+      ${schoolInfo ? `<div class="mini-rule"><strong>Aligned:</strong> ${schoolInfo.aligned.join(', ')}</div><div class="mini-rule"><strong>Opposed:</strong> ${schoolInfo.opposed}</div>` : '<div class="mini-rule">Choose a school to unlock school relations and starter casting numbers.</div>'}
+    </section>
+
+    <section class="panel stack">
+      <h3>Progress</h3>
+      <ul class="checklist">
+        ${checklist.map((item) => `<li class="${item.done ? 'done' : ''}">${item.done ? '✓' : '•'} ${item.label}</li>`).join('')}
+      </ul>
+    </section>
+  `;
+}
+
+function overlay({ text, x, y, w, h, page, cls = 'normal', box = false, align = 'left' }) {
+  return { text, x, y, w, h, page, cls, box, align };
+}
+
+function page1Overlays() {
+  const items = [];
+  const apprentice = state.hasApprentice ? apprenticeStats() : { move: '', fight: '', shoot: '', armour: '', will: '', health: '', currentHealth: '' };
+  items.push(overlay({ page: 1, text: state.wizardName, x: 120, y: 111, w: 182, h: 14, cls: 'small', box: true }));
+  items.push(overlay({ page: 1, text: state.school, x: 388, y: 111, w: 95, h: 14, cls: 'small', box: true }));
+
+  const wizardStatPos = {
+    move: [74, 144, 22], fight: [117, 144, 22], shoot: [161, 144, 22], armour: [204, 144, 26], will: [248, 144, 22],
+    health: [295, 144, 28], level: [341, 144, 22], experience: [449, 144, 36], currentHealth: [381, 153, 28]
+  };
+  Object.entries(state.wizard).forEach(([key, value]) => {
+    const pos = wizardStatPos[key];
+    if (!pos) return;
+    items.push(overlay({ page: 1, text: value, x: pos[0], y: pos[1], w: pos[2], h: 10, cls: 'tiny', box: true, align: 'center' }));
+  });
+
+  items.push(overlay({ page: 1, text: state.wizardItems, x: 94, y: 169, w: 205, h: 47, cls: 'tiny', box: true }));
+  items.push(overlay({ page: 1, text: state.wizardNotes, x: 326, y: 169, w: 158, h: 47, cls: 'tiny', box: true }));
+  items.push(overlay({ page: 1, text: state.hasApprentice ? state.apprenticeName : '', x: 137, y: 261, w: 165, h: 14, cls: 'small', box: true }));
+
+  const apprenticeStatPos = {
+    move: [109, 294, 22], fight: [153, 294, 22], shoot: [195, 294, 22], armour: [239, 294, 26], will: [283, 294, 22],
+    health: [327, 294, 28], currentHealth: [390, 294, 28]
+  };
+  Object.entries(apprentice).forEach(([key, value]) => {
+    const pos = apprenticeStatPos[key];
+    if (!pos) return;
+    items.push(overlay({ page: 1, text: value, x: pos[0], y: pos[1], w: pos[2], h: 10, cls: 'tiny', box: true, align: 'center' }));
+  });
+
+  items.push(overlay({ page: 1, text: state.hasApprentice ? state.apprenticeItems : '', x: 94, y: 318, w: 205, h: 42, cls: 'tiny', box: true }));
+  items.push(overlay({ page: 1, text: state.hasApprentice ? state.apprenticeNotes : '', x: 326, y: 318, w: 158, h: 42, cls: 'tiny', box: true }));
+  items.push(overlay({ page: 1, text: state.homeBase, x: 128, y: 406, w: 352, h: 44, cls: 'small', box: true }));
+  items.push(overlay({ page: 1, text: state.vault, x: 128, y: 490, w: 352, h: 44, cls: 'small', box: true }));
+  items.push(overlay({ page: 1, text: state.treasury, x: 145, y: 578, w: 100, h: 16, cls: 'small', box: true }));
+  return items;
+}
+
+function page2Overlays() {
+  return SPELL_LINE_POSITIONS.flatMap(([spell, x, y]) => {
+    if (!state.spells[spell]) return [];
+    return [overlay({ page: 2, text: 'X', x, y, w: 10, h: 10, cls: 'mark', align: 'center' })];
+  });
+}
+
+function page3Overlays() {
+  const items = [];
+  const rows = rosterSlots();
+  const rowTops = [69, 147, 225, 303, 381, 459, 537, 615];
+  const statPos = { move: 109, fight: 153, shoot: 196, armour: 239, will: 282, health: 326, currentHealth: 391 };
+  rowTops.forEach((top, index) => {
+    const slot = rows[index];
+    if (!slot?.type) return;
+    items.push(overlay({ page: 3, text: slot.type, x: 121, y: top - 1, w: 185, h: 13, cls: 'small', box: true }));
+    ['move', 'fight', 'shoot', 'armour', 'will', 'health', 'currentHealth'].forEach((key) => {
+      items.push(overlay({ page: 3, text: slot[key], x: statPos[key], y: top + 21, w: key === 'currentHealth' ? 28 : 22, h: 10, cls: 'tiny', box: true, align: 'center' }));
+    });
+    items.push(overlay({ page: 3, text: slot.items, x: 94, y: top + 48, w: 210, h: 24, cls: 'tiny', box: true }));
+    items.push(overlay({ page: 3, text: slot.notesFull, x: 362, y: top + 48, w: 118, h: 24, cls: 'tiny', box: true }));
+  });
+  return items;
+}
+
+function toPctX(pt) { return `${(pt / PAGE_WIDTH) * 100}%`; }
+function toPctY(pt) { return `${(pt / PAGE_HEIGHT) * 100}%`; }
+function toPctW(pt) { return `${(pt / PAGE_WIDTH) * 100}%`; }
+function toPctH(pt) { return `${(pt / PAGE_HEIGHT) * 100}%`; }
+
+function renderPreview() {
+  const overlays = [...page1Overlays(), ...page2Overlays(), ...page3Overlays()];
+  document.getElementById('previewPages').innerHTML = [1, 2, 3].map((page) => `
+    <div class="sheet-page">
+      <img src="${PAGE_IMAGES[page - 1]}" alt="Sheet page ${page}" />
+      ${overlays.filter((entry) => entry.page === page && String(entry.text || '').trim() !== '').map((entry) => `
+        <div class="overlay ${entry.cls} ${entry.align}${entry.box ? ' field-box' : ''}" style="left:${toPctX(entry.x)};top:${toPctY(entry.y)};width:${toPctW(entry.w)};height:${toPctH(entry.h)};">${escapeHtml(entry.text)}</div>
+      `).join('')}
+    </div>
+  `).join('');
+}
+
+function renderAll() {
+  renderSchoolCards();
+  renderSpellSummary();
+  renderSpellCards();
+  renderDetails();
+  renderWarband();
+  renderSummary();
+  renderPreview();
+}
+
+function exportData() {
+  const blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = 'frostgrave-character-data.json';
+  anchor.click();
+  URL.revokeObjectURL(url);
+}
+
+function importData(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      state = mergeState(defaultState(), JSON.parse(String(reader.result)));
+      saveState();
+      renderAll();
+    } catch (error) {
+      alert('That file does not look like valid Frostgrave character data.');
+      console.error(error);
+    }
+  };
+  reader.readAsText(file);
+}
+
+function resetAll() {
+  if (!confirm('Clear all saved data from this browser?')) return;
+  state = defaultState();
+  saveState();
+  renderAll();
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;');
+}
+
+function handleDocumentInput(event) {
+  const target = event.target;
+  if (target.matches('[data-path]')) {
+    setValue(target.dataset.path, target.value);
+    if (target.dataset.path.startsWith('wizard.') || target.dataset.path === 'apprenticeCurrentHealth') {
+      renderDetails();
+    }
+    renderSummary();
+    renderPreview();
+    if (target.dataset.path === 'treasury') renderWarband();
+  }
+
+  if (target.id === 'spellSearch') {
+    state.spellSearch = target.value;
+    saveState();
+    renderSpellCards();
+  }
+
+  if (target.id === 'spellFilter') {
+    state.spellFilter = target.value;
+    saveState();
+    renderSpellCards();
+  }
+
+  if (target.id === 'strictStarterMode') {
+    state.strictStarterMode = target.checked;
+    saveState();
+    renderSpellSummary();
+    renderSpellCards();
+    renderSummary();
+  }
+
+  if (target.id === 'hasApprentice') {
+    state.hasApprentice = target.checked;
+    saveState();
+    renderDetails();
+    renderWarband();
+    renderSummary();
+    renderPreview();
+  }
+
+  if (target.matches('[data-soldier-index]')) {
+    const index = Number(target.dataset.soldierIndex);
+    state.soldierSlots[index].type = target.value;
+    if (!target.value) {
+      state.soldierSlots[index].items = '';
+      state.soldierSlots[index].notes = '';
+      state.soldierSlots[index].currentHealth = '';
+    } else {
+      state.soldierSlots[index].currentHealth = SOLDIER_MAP[target.value].health;
+    }
+    saveState();
+    renderWarband();
+    renderSummary();
+    renderPreview();
+  }
+}
+
+function handleDocumentClick(event) {
+  const schoolButton = event.target.closest('[data-school]');
+  if (schoolButton) {
+    state.school = schoolButton.dataset.school;
+    saveState();
+    renderAll();
+    return;
+  }
+
+  const spellToggle = event.target.closest('[data-spell-toggle]');
+  if (spellToggle) {
+    const spellName = spellToggle.dataset.spellToggle;
+    const spell = SPELLS.find((entry) => entry.name === spellName);
+    if (!spell) return;
+    if (state.spells[spellName]) {
+      state.spells[spellName] = false;
+    } else {
+      const eligibility = canSelectSpell(spell);
+      if (!eligibility.ok) {
+        alert(eligibility.reason);
+        return;
+      }
+      state.spells[spellName] = true;
+    }
+    saveState();
+    renderSpellSummary();
+    renderSpellCards();
+    renderSummary();
+    renderPreview();
+  }
+}
+
+function setupButtons() {
+  document.getElementById('printBtn').addEventListener('click', () => window.print());
+  document.getElementById('downloadDataBtn').addEventListener('click', exportData);
+  document.getElementById('resetBtn').addEventListener('click', resetAll);
+  document.getElementById('importDataInput').addEventListener('change', (event) => importData(event.target.files?.[0]));
+  document.addEventListener('input', handleDocumentInput);
+  document.addEventListener('change', handleDocumentInput);
+  document.addEventListener('click', handleDocumentClick);
+}
+
+function setupInstallPrompt() {
+  let deferredPrompt = null;
+  const installBtn = document.getElementById('installBtn');
+
+  window.addEventListener('beforeinstallprompt', (event) => {
+    event.preventDefault();
+    deferredPrompt = event;
+    installBtn.hidden = false;
+  });
+
+  installBtn.addEventListener('click', async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    installBtn.hidden = true;
+  });
+
+  window.addEventListener('appinstalled', () => {
+    installBtn.hidden = true;
+    deferredPrompt = null;
+  });
+}
+
+async function registerServiceWorker() {
+  if (!('serviceWorker' in navigator)) return;
+  try {
+    await navigator.serviceWorker.register('./sw.js');
+  } catch (error) {
+    console.warn('Service worker registration failed', error);
+  }
+}
+
+renderAll();
+setupButtons();
+setupInstallPrompt();
+registerServiceWorker();
